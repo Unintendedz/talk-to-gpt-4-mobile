@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GPT-4 Mobile
 // @name:zh-CN   GPT-4 Mobile
-// @version      0.7
+// @version      0.8
 // @description  That users can enhance their conversations with the gpt-4-mobile model using a userscript. By combining resources from specific websites, one can remove restrictions on message limits and make GPT-4 Mobile the default model, including the incorporation of gpt-3.5 mobile option.
 // @description:zh-CN 用户可以使用用户脚本来增强他们与 gpt-4-mobile 模型的对话。通过结合特定网站的资源，用户可以消除消息限制，并将 GPT-4 Mobile 设置为默认模型，包括引入 gpt-3.5 mobile 选项。
 // @author       Unintendedz and enzheng128 and onepisYa
@@ -41,12 +41,27 @@
   // 注册脚本菜单
   const registerMenuCommand = () => {
     const onHandle = (value) => {
-      GM_setValue('defaultModel', value)
-      registerMenuCommand()
+      GM_setValue('defaultModel', value);
+      registerMenuCommand();
+
+      if (isPlus === false) {
+        switch (value) {
+          case 'GPT-3.5':
+            registerMenuCommand();
+            window.location.href = "https://chat.openai.com/?model=text-davinci-002-render-sha";
+            break;
+          default:
+            registerMenuCommand();
+            window.location.href = "https://chat.openai.com/?model=text-davinci-002-render-sha-mobile";
+            break;
+        }
+      } else {
+        registerMenuCommand();
+      }
     }
     if (!GM_getValue('defaultModel')) GM_setValue('defaultModel', DEFAULT_BUTTON)
     const defaultValue = GM_getValue('defaultModel')
-    menus.forEach(menu => GM_unregisterMenuCommand(menu))
+    menus.forEach(menu => GM_unregisterMenuCommand(menu));
     menus = BUTTONS_GROUPS.map((buttonText) => GM_registerMenuCommand(`切换默认为：${buttonText}${defaultValue === buttonText ? '（当前）' : ''}`, () => onHandle(buttonText)))
   }
 
@@ -144,7 +159,7 @@
             "subscription_level": "plus",
             "default_model": "gpt-4-mobile"
           } : {
-            "category": "gpt_3.5",
+            "category": "gpt_4",
             "human_category_name": "GPT-3.5 Mobile",
             "subscription_level": "free",
             "default_model": "text-davinci-002-render-sha-mobile"
