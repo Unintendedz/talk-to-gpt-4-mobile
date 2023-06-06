@@ -26,11 +26,12 @@
   // =============== 脚本菜单处理 ===============
   // ==========================================
   // set default
-  const BUTTONS_GROUPS = ['GPT-3.5', 'GPT-4'];
+  const BUTTONS_GROUPS = ['GPT-3.5'];
   const isPlus = GM_getValue('userType');
   let DEFAULT_BUTTON = 'GPT-3.5 Mobile';
   if (isPlus) {
     DEFAULT_BUTTON = 'GPT-4 Mobile';
+    BUTTONS_GROUPS.push('GPT-4');
   }
   BUTTONS_GROUPS.push(DEFAULT_BUTTON);
 
