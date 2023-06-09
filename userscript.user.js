@@ -1,210 +1,227 @@
 // ==UserScript==
-// @name         GPT-4 Mobile
-// @name:zh-CN   GPT-4 Mobile
-// @version      0.8
-// @description  That users can enhance their conversations with the gpt-4-mobile model using a userscript. By combining resources from specific websites, one can remove restrictions on message limits and make GPT-4 Mobile the default model, including the incorporation of gpt-3.5 mobile option.
-// @description:zh-CN 用户可以使用用户脚本来增强他们与 gpt-4-mobile 模型的对话。通过结合特定网站的资源，用户可以消除消息限制，并将 GPT-4 Mobile 设置为默认模型，包括引入 gpt-3.5 mobile 选项。
-// @author       Unintendedz and enzheng128 and onepisYa
+// @name         Talk to ChatGPT Mobile
+// @name:zh-CN   与 GPT 移动版畅聊
+// @namespace    https://github.com/Unintendedz/talk-to-gpt-4-mobile
+// @version      0.3
+// @description  Converse with the gpt-4-mobile model on the web (without the limit of 25 messages every 3 hours that GPT-4 currently has).
+// @description:zh-CN 在网页端与 gpt-4-mobile 模型进行对话（没有每3小时25条的限制）。
+// @author       Unintendedz, onepisYa
 // @match        https://chat.openai.com/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @grant        GM_addValueChangeListener
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-idle
-// @license      MIT
-// @namespace    https://greasyfork.org/en/scripts/467802-gpt-4-mobile
+// @license      WTFPL
 // ==/UserScript==
 
-(function () {
-  'use strict';
-  // 用户类型事件监听
-  window.addEventListener('UserTypeEvent', function (e) {
-    GM_setValue('userType', e.detail.userType);
-  });
+(() => {
+  "use strict";
 
-  // ==========================================
-  // =============== 脚本菜单处理 ===============
-  // ==========================================
-  // set default
-  const BUTTONS_GROUPS = ['GPT-3.5'];
-  const isPlus = GM_getValue('userType');
-  let DEFAULT_BUTTON = 'GPT-3.5 Mobile';
-  if (isPlus) {
-    DEFAULT_BUTTON = 'GPT-4 Mobile';
-    BUTTONS_GROUPS.push('GPT-4');
-  }
-  BUTTONS_GROUPS.push(DEFAULT_BUTTON);
-
-  let menus = [];
-  let isSwitch = false;
-
-  // 注册脚本菜单
-  const registerMenuCommand = () => {
-    const onHandle = (value) => {
-      GM_setValue('defaultModel', value);
-      registerMenuCommand();
-
-      if (isPlus === false) {
-        switch (value) {
-          case 'GPT-3.5':
-            registerMenuCommand();
-            window.location.href = "https://chat.openai.com/?model=text-davinci-002-render-sha";
-            break;
-          default:
-            registerMenuCommand();
-            window.location.href = "https://chat.openai.com/?model=text-davinci-002-render-sha-mobile";
-            break;
-        }
-      } else {
-        registerMenuCommand();
-      }
-    }
-    if (!GM_getValue('defaultModel')) GM_setValue('defaultModel', DEFAULT_BUTTON)
-    const defaultValue = GM_getValue('defaultModel')
-    menus.forEach(menu => GM_unregisterMenuCommand(menu));
-    menus = BUTTONS_GROUPS.map((buttonText) => GM_registerMenuCommand(`切换默认为：${buttonText}${defaultValue === buttonText ? '（当前）' : ''}`, () => onHandle(buttonText)))
-  }
-
-  const checkButton = (addedNode) => {
-    const model = `${GM_getValue('defaultModel')}`
-    console.log("current model button should be", model);
-    if (addedNode.nodeType === Node.ELEMENT_NODE) {
-      const buttons = addedNode.querySelectorAll('button');
-      for (let button of buttons) {
-        if (button.textContent === model) {
-          button.querySelector('span')?.click();
-          button.querySelector('span')?.click();
-          button.querySelector('span')?.click();
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  const handleClick = () => {
-    isSwitch = true;
-  }
-
-  // 监听newChat事件
-  const addEventTargetA = () => {
-    const buttons = document.querySelectorAll('a')
-    for (const button of buttons) {
-      if (button.textContent === 'New chat') {
-        button.removeEventListener('click', handleClick)
-        button.addEventListener('click', handleClick)
-        break;
-      }
-    }
-  }
-
-  const callback = (mutationRecords) => {
-    for (const mutationRecord of mutationRecords) {
-      if (mutationRecord.addedNodes.length) {
-        for (const addedNode of mutationRecord.addedNodes) {
-          if (checkButton(addedNode)) return;
-        }
-      }
-    }
-    addEventTargetA()
-  };
-  registerMenuCommand()
-  addEventTargetA();
-  const observer = new MutationObserver(callback);
-  observer.observe(document.getElementById('__next'), {
-    childList: true,
-    subtree: true,
-  });
-  // 修改pushStatus和replaceStatus
-  const pushState = window.history.pushState;
-  const replaceState = window.history.replaceState;
-  window.history.pushState = function () {
-    if (isSwitch) {
-      // 等到 openai 发送的请求完毕之后，将它原本的model历史记忆设置完成之后，我们再设置自己想要的默认模型。
-      setTimeout(() => checkButton(document.getElementById('__next')), 500)
-    }
-    pushState.apply(this, arguments);
-    isSwitch = false
-  }
-  window.history.replaceState = function () {
-    if (isSwitch) {
-      setTimeout(() => checkButton(document.getElementById('__next')), 500)
-    }
-    replaceState.apply(this, arguments);
-    isSwitch = false
-  }
-
-  // =========================================================
-  // =============== fetch 拦截 添加gpt-4 mobile ==============
-  // =========================================================
-  // 将代码插入到网页中
-  const script = document.createElement('script');
-  // add mobile GPT-4
-  script.textContent = `
-      let waitIsPlus = null;
-      let resolveIsPlus = null;
-      let isPlus = null;
-      waitIsPlus = new Promise((resolve) => {
-        resolveIsPlus = resolve;
+  class GptMobile {
+    constructor() {
+      this.observer = null;
+      this.models = {
+        "text-davinci-002-render-sha-mobile": {
+          category: "gpt_3.5",
+          human_category_name: "GPT-3.5 Mobile",
+          subscription_level: "free",
+          default_model: "text-davinci-002-render-sha-mobile",
+        },
+        "gpt-4-mobile": {
+          category: "gpt_4",
+          human_category_name: "GPT-4 Mobile",
+          subscription_level: "plus",
+          default_model: "gpt-4-mobile",
+        },
+      };
+      this.resolveIsPlus = null;
+      this.isPlus = new Promise((resolve) => {
+        this.resolveIsPlus = resolve;
       });
-      const responseHandlers = {
-        'https://chat.openai.com/backend-api/models': async function (response) {
-          const body = await response.clone().json();
-          if (isPlus === null) {
-            await waitIsPlus;
-          }
-          const model = isPlus ? {
-            "category": "gpt_4",
-            "human_category_name": "GPT-4 Mobile",
-            "subscription_level": "plus",
-            "default_model": "gpt-4-mobile"
-          } : {
-            "category": "gpt_4",
-            "human_category_name": "GPT-3.5 Mobile",
-            "subscription_level": "free",
-            "default_model": "text-davinci-002-render-sha-mobile"
-          };
-          body.categories.push(model);
+      this.commands = {};
+    }
 
-          let event = new CustomEvent('UserTypeEvent', { detail: { userType: isPlus } });
-          window.dispatchEvent(event);
+    get modelsNameArray() {
+      return Object.values(this.models).map(
+        (model) => model.human_category_name
+      );
+    }
+
+
+    updateMenu = () => {
+      let defaultModel = GM_getValue("default_model", "fetching");
+      console.log("defaultModel:", defaultModel);
+      for (let command in this.commands) {
+        GM_unregisterMenuCommand(this.commands[command]);
+      }
+      for (let modelName in this.models) {
+        let humanCategoryName = this.models[modelName].human_category_name;
+        if (defaultModel === "fetching") {
+          humanCategoryName += " （正在获取订阅……）";
+        } else if (modelName === defaultModel) {
+          humanCategoryName += " （当前）";
+        }
+        this.commands[modelName] = GM_registerMenuCommand(
+          humanCategoryName,
+          () => {
+            console.log("on select modelName:", modelName);
+            if (defaultModel !== "fetching") {
+              GM_setValue("default_model", modelName);
+              unsafeWindow.location.href = `/?model=${modelName}`;
+            }
+          }
+        );
+      }
+    };
+
+    registerValueChangeHandler = () => {
+      GM_addValueChangeListener(
+        "default_model",
+        (name, old_value, new_value, remote) => {
+          this.updateMenu();
+        }
+      );
+    };
+
+    responseHandlers = () => {
+      return {
+        "https://chat.openai.com/backend-api/accounts/check": async (
+          response
+        ) => {
+          const body = await response.clone().json();
+          const subscription_plan =
+            body.accounts.default.entitlement.subscription_plan;
+          const isPlusPlan = subscription_plan === "chatgptplusplan";
+          this.resolveIsPlus(isPlusPlan);
+          if (GM_getValue("default_model") === undefined) {
+            const defaultModel = isPlusPlan
+              ? "gpt-4-mobile"
+              : "text-davinci-002-render-sha-mobile";
+            GM_setValue("default_model", defaultModel);
+          }
+          return response;
+        },
+        "https://chat.openai.com/backend-api/models": async (response) => {
+          const body = await response.clone().json();
+          const defaultModel = GM_getValue("default_model");
+          let model;
+          if (!defaultModel) {
+            model = (await this.isPlus)
+              ? this.models["gpt-4-mobile"]
+              : this.models["text-davinci-002-render-sha-mobile"];
+          } else {
+            model = this.models[defaultModel];
+          }
+          body.categories.push(model);
           return new Response(JSON.stringify(body), {
             status: response.status,
             statusText: response.statusText,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { "Content-Type": "application/json" },
           });
         },
-
-        'https://chat.openai.com/backend-api/moderations': async function (response) {
+        "https://chat.openai.com/backend-api/moderations": async (response) => {
           const body = await response.clone().json();
           body.flagged = false;
           body.blocked = false;
-
           return new Response(JSON.stringify(body), {
             status: response.status,
             statusText: response.statusText,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { "Content-Type": "application/json" },
           });
         },
-        'https://chat.openai.com/backend-api/accounts/check': async function (response) {
-          const body = await response.clone().json();
-          const subscription_plan = body.accounts.default.entitlement.subscription_plan;
-          isPlus = subscription_plan === 'chatgptplusplan';
-
-          return (() => { resolveIsPlus(); return response })();
-        },
       };
-      window.fetch = new Proxy(window.fetch, {
-        apply: async function (target, thisArg, argumentsList) {
-          const response = await Reflect.apply(...arguments);
-          for (let key in responseHandlers) {
+    };
+
+    setupFetchProxy = () => {
+      unsafeWindow.fetch = new Proxy(window.fetch, {
+        apply: async (target, thisArg, argumentsList) => {
+          const response = await Reflect.apply(target, thisArg, argumentsList);
+          for (let key in this.responseHandlers()) {
             if (argumentsList[0].includes(key)) {
-              return responseHandlers[key](response);
+              return this.responseHandlers()[key](response);
             }
           }
           return response;
+        },
+      });
+    };
+
+    setupModelObserver = () => {
+      const modelName =
+        this.models[GM_getValue("default_model")].human_category_name;
+      const observer = new MutationObserver((mutationsList, observer) => {
+        for (let mutation of mutationsList) {
+          if (mutation.type === "childList") {
+            const modelElement = document.evaluate(
+              `//span[contains(text(), "${modelName}")]`,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            ).singleNodeValue;
+            if (modelElement) {
+              modelElement.click();
+              observer.disconnect();
+            }
+          }
         }
       });
-    `;
-  document.body.appendChild(script);
+
+      observer.observe(document, { childList: true, subtree: true });
+    };
+
+    onUrlStateChange = (target, thisArg, argArray) => {
+      let oldUrl = new URL(window.location.href);
+      let newUrl = new URL(argArray[2], window.location.origin);
+      let currentModel = newUrl.searchParams.get("model");
+      if (currentModel) {
+        let expectedModel = GM_getValue("default_model");
+        if (currentModel !== expectedModel) {
+          newUrl.searchParams.set("model", expectedModel);
+        }
+        argArray[2] = newUrl.toString();
+      }
+      let result = target.apply(thisArg, argArray);
+      if (newUrl.pathname === "/" && oldUrl.pathname !== "/") {
+        this.setupModelObserver();
+      } else if (newUrl.pathname === "/" && !newUrl.search) {
+        newUrl.searchParams.set("model", GM_getValue("default_model"));
+        this.setupModelObserver();
+      }
+      return result;
+    };
+
+    setupHistoryProxy = () => {
+      unsafeWindow.history.pushState = new Proxy(
+        unsafeWindow.history.pushState,
+        {
+          apply: (target, thisArg, argArray) => {
+            return this.onUrlStateChange(target, thisArg, argArray);
+          },
+        }
+      );
+
+      unsafeWindow.history.replaceState = new Proxy(
+        unsafeWindow.history.replaceState,
+        {
+          apply: (target, thisArg, argArray) => {
+            return this.onUrlStateChange(target, thisArg, argArray);
+          },
+        }
+      );
+    };
+
+    init = () => {
+      this.updateMenu();
+      this.registerValueChangeHandler();
+      this.setupFetchProxy();
+      this.setupHistoryProxy();
+      this.setupModelObserver();
+    };
+  }
+
+  const gptMobile = new GptMobile();
+  gptMobile.init();
 })();
