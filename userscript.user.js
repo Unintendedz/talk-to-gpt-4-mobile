@@ -2,7 +2,7 @@
 // @name         Talk to ChatGPT Mobile
 // @name:zh-CN   与 GPT 移动版畅聊
 // @namespace    https://github.com/Unintendedz/talk-to-gpt-4-mobile
-// @version      0.4
+// @version      0.5
 // @description  Converse with the gpt-4-mobile model on the web (without the limit of 25 messages every 3 hours that GPT-4 currently has).
 // @description:zh-CN 在网页端与 gpt-4-mobile 模型进行对话（没有每3小时25条的限制）。
 // @author       Unintendedz, onepisYa
@@ -18,6 +18,19 @@
 
 (() => {
   "use strict";
+
+  let languages = {
+    en: {
+        defaultModel: 'Default Model',
+        otherFunctions: 'Other Functions',
+        disableModeration: 'Disable moderations'
+    },
+    zh: {
+        defaultModel: '默认模型',
+        otherFunctions: '其它功能',
+        disableModeration: '防止审查标记和屏蔽'
+    }
+  };
 
   class GptMobile {
     constructor() {
@@ -41,7 +54,11 @@
         this.resolveIsPlus = resolve;
       });
       this.commands = {};
-      this.moderationDisable = GM_getValue("moderation_disabled", false);
+      this.moderationDisabled = GM_getValue("moderation_disabled", false);
+    }
+
+    get i18n() { 
+        return navigator.language.slice(0, 2) === 'zh' ? languages['zh'] : languages['en'];
     }
 
     get modelsNameArray() {
@@ -59,13 +76,13 @@
       }
 
       this.commands["default_model_divider"] = GM_registerMenuCommand(
-        `========默认模型========`,
+        `========${this.i18n.defaultModel}========`,
         () => {}
       );
       for (let modelName in this.models) {
         let humanCategoryName = this.models[modelName].human_category_name;
         if (defaultModel === "fetching") {
-          humanCategoryName += " （正在获取订阅……）";
+          humanCategoryName += " loading";
         } else if (modelName === defaultModel) {
           humanCategoryName = `✅ ${humanCategoryName}`;
         } else {
@@ -84,14 +101,14 @@
       }
 
       this.commands["other_functions_divider"] = GM_registerMenuCommand(
-        `========其它功能========`,
+        `========${this.i18n.otherFunctions}========`,
         () => {}
       );
       this.commands["moderation_disabled"] = GM_registerMenuCommand(
-        `${this.moderationDisable ? "✅" : "⬛"} 防止审查标记和屏蔽`,
+        `${this.moderationDisabled ? "✅" : "⬛"} ${this.i18n.disableModeration}`,
         () => {
-          this.moderationDisable = !this.moderationDisable;
-          GM_setValue("moderation_disabled", this.moderationDisable);
+          this.moderationDisabled = !this.moderationDisabled;
+          GM_setValue("moderation_disabled", this.moderationDisabled);
           this.updateMenu();
         }
       );
@@ -107,7 +124,7 @@
       GM_addValueChangeListener(
         "moderation_disabled",
         (name, old_value, new_value, remote) => {
-          this.moderationDisable = new_value;
+          this.moderationDisabled = new_value;
         }
       );
     };
