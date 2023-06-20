@@ -2,7 +2,7 @@
 // @name         Talk to ChatGPT Mobile
 // @name:zh-CN   与 GPT 移动版畅聊
 // @namespace    https://github.com/Unintendedz/talk-to-gpt-4-mobile
-// @version      0.3
+// @version      0.4
 // @description  Converse with the gpt-4-mobile model on the web (without the limit of 25 messages every 3 hours that GPT-4 currently has).
 // @description:zh-CN 在网页端与 gpt-4-mobile 模型进行对话（没有每3小时25条的限制）。
 // @author       Unintendedz, onepisYa
@@ -41,6 +41,7 @@
         this.resolveIsPlus = resolve;
       });
       this.commands = {};
+      this.moderationDisable = GM_getValue("moderation_disabled", false);
     }
 
     get modelsNameArray() {
@@ -49,19 +50,26 @@
       );
     }
 
-
     updateMenu = () => {
       let defaultModel = GM_getValue("default_model", "fetching");
       console.log("defaultModel:", defaultModel);
+
       for (let command in this.commands) {
         GM_unregisterMenuCommand(this.commands[command]);
       }
+
+      this.commands["default_model_divider"] = GM_registerMenuCommand(
+        `========默认模型========`,
+        () => {}
+      );
       for (let modelName in this.models) {
         let humanCategoryName = this.models[modelName].human_category_name;
         if (defaultModel === "fetching") {
           humanCategoryName += " （正在获取订阅……）";
         } else if (modelName === defaultModel) {
-          humanCategoryName += " （当前）";
+          humanCategoryName = `✅ ${humanCategoryName}`;
+        } else {
+          humanCategoryName = `⬛ ${humanCategoryName}`;
         }
         this.commands[modelName] = GM_registerMenuCommand(
           humanCategoryName,
@@ -74,6 +82,19 @@
           }
         );
       }
+
+      this.commands["other_functions_divider"] = GM_registerMenuCommand(
+        `========其它功能========`,
+        () => {}
+      );
+      this.commands["moderation_disabled"] = GM_registerMenuCommand(
+        `${this.moderationDisable ? "✅" : "⬛"} 防止审查标记和屏蔽`,
+        () => {
+          this.moderationDisable = !this.moderationDisable;
+          GM_setValue("moderation_disabled", this.moderationDisable);
+          this.updateMenu();
+        }
+      );
     };
 
     registerValueChangeHandler = () => {
@@ -81,6 +102,12 @@
         "default_model",
         (name, old_value, new_value, remote) => {
           this.updateMenu();
+        }
+      );
+      GM_addValueChangeListener(
+        "moderation_disabled",
+        (name, old_value, new_value, remote) => {
+          this.moderationDisable = new_value;
         }
       );
     };
@@ -122,9 +149,15 @@
           });
         },
         "https://chat.openai.com/backend-api/moderations": async (response) => {
+          console.log(
+            'GM_getValue("moderation_disabled"):',
+            GM_getValue("moderation_disabled")
+          );
           const body = await response.clone().json();
-          body.flagged = false;
-          body.blocked = false;
+          if (GM_getValue("moderation_disabled")) {
+            body.flagged = false;
+            body.blocked = false;
+          }
           return new Response(JSON.stringify(body), {
             status: response.status,
             statusText: response.statusText,
