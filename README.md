@@ -1,4 +1,4 @@
-# This script is no longer functional
+# THIS SCRIPT IS NO LONGER FUNCTIONAL. 2023.06.23
 
 ## Features
 1. Adds `GPT-3.5 Mobile` or `GPT-4 Mobile` model options to the ChatGPT web interface.
